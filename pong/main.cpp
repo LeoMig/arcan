@@ -76,9 +76,9 @@ void InitGame()
 
     enemy.x = racket.x;//х координату оппонета ставим в ту же точку что и игрока
 
-    ball.dy = (rand() % 65 + 35) / 100.;//формируем вектор полета шарика
-    ball.dx = -(1 - ball.dy);//формируем вектор полета шарика
-    ball.speed = 11;
+    ball.dy = -(rand() % 65 + 35) / 100.;//формируем вектор полета шарика
+    ball.dx = (1 - ball.dy);//формируем вектор полета шарика
+    ball.speed = 211;
     ball.rad = 20;
     ball.x = racket.x;//x координата шарика - на середие ракетки
     ball.y = racket.y - ball.rad;//шарик лежит сверху ракетки
@@ -265,6 +265,13 @@ void CheckFloor()
     }
 }
 
+float sign(float a)
+{
+    if (a > 0) return 1;
+    if (a < 0) return -1;
+    return 0;
+}
+
 void ProcessRoom()
 {
     //обрабатываем стены, потолок и пол. принцип - угол падения равен углу отражения, а значит, для отскока мы можем просто инвертировать часть вектора движения шарика
@@ -272,18 +279,33 @@ void ProcessRoom()
     CheckRoof();
     CheckFloor();
 
-    float dx = ball.dx * ball.speed;
-    float dy = ball.dy * ball.speed;
-    float v = sqrt(pow(dx, 2) + pow(dy, 2));
-    float a = atan2(dx, dy) * 180. / 3.1415;
 
-    for (float angle = a - 90;angle < a + 90; angle += 18) {
-        float bx = sin(angle * 3.1415 / 180.) * ball.rad;
-        float by = cos(angle * 3.1415 / 180.) * ball.rad;
+    float mballX = ball.x;
+    float mballY = ball.y;
+    float mballDX = ball.dx;
+    float mballDY = ball.dy;
+
+
+    //for (float angle = a - 90;angle < a + 90; angle += 18) {
+//        float bx = sin(angle * 3.1415 / 180.) * ball.rad;
+  //      float by = cos(angle * 3.1415 / 180.) * ball.rad;
+    float bx = 0;
+    float by = 0;
+    
+    float dx = mballDX * ball.speed;
+    float dy = mballDY * ball.speed;
+        float v = sqrt(pow(dx, 2) + pow(dy, 2));
+
         for (int t = 0; t < v; t++) {
+
+            float dx = mballDX * ball.speed;
+            float dy = mballDY * ball.speed;
+            float a = atan2(dx, dy) * 180. / 3.1415;
+
             float scale = float(t) / v;
-            float x = scale * dx + ball.x + bx;
-            float y = scale * dy + ball.y + by;
+            float x = scale * dx + mballX + bx;
+            float y = scale * dy + mballY + by;
+
 
             SetPixel(window.context, x, y, RGB(255, 255, 255));
 
@@ -297,22 +319,25 @@ void ProcessRoom()
                             int top = y - block[i][j].y;
                             int bottom = block[i][j].y + block[i][j].height - y;
 
+
                             if (min(left, right) > min(top, bottom)) {
-                                ball.dy *= -1;
+                            
+                                mballY = mballY + fabs(y - mballY)*2*sign(mballDY);
+                                mballDY *= -1;
                             }
                             else {
-                                ball.dx *= -1;
+                                mballDX *= -1;
                             }
 
 
-                            block[i][j].status = false;
-                            return;
+                       //     block[i][j].status = false;
+                            //return;
                         }
                     }
                 }
             }
         }
-    }
+    //}
 }
 
 void ProcessBall()
@@ -366,8 +391,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         ProcessInput();//опрос клавиатуры
         LimitRacket();//проверяем, чтобы ракетка не убежала за экран
 
+        POINT p;
+        GetCursorPos(&p);
+        ScreenToClient(window.hWnd, &p);
+        ball.x = p.x;
+        ball.y = p.y;
+
+
         ProcessRoom();//обрабатываем отскоки от стен и каретки, попадание шарика в картетку
-        ProcessBall();//перемещаем шарик
+
+
+
+       // ProcessBall();//перемещаем шарик
 
         BitBlt(window.device_context, 0, 0, window.width, window.height, window.context, 0, 0, SRCCOPY);//копируем буфер в окно
         Sleep(16);//ждем 16 милисекунд (1/количество кадров в секунду)
