@@ -329,7 +329,7 @@ void ProcessBall()
         ball.x = racket.x;
     }
 }
-  
+  //hjh
 void InitWindow()
 {
     SetProcessDPIAware();
