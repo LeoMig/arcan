@@ -3,21 +3,9 @@
 //linker::input::additional dependensies Msimg32.lib; Winmm.lib
 
 #include "windows.h"
+#include "math.h"
 
-// секция данных игры  
-typedef struct {
-    float x, y, width, height, rad, dx, dy, speed;
-    HBITMAP hBitmap;//хэндл к спрайту шарика 
-} sprite;
-
-sprite racket;//ракетка игрока
-sprite enemy;//ракетка противника
-sprite ball;//шарик
-
-struct {
-    int score, balls;//количество набранных очков и оставшихся "жизней"
-    bool action = false;//состояние - ожидание (игрок должен нажать пробел) или игра
-} game;
+void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool alpha = false);
 
 struct {
     HWND hWnd;//хэндл окна
@@ -25,7 +13,47 @@ struct {
     int width, height;//сюда сохраним размеры окна которое создаст программа
 } window;
 
+// секция данных игры  
+struct sprite {
+    float x, y, width, height, rad, dx, dy, speed;
+    HBITMAP hBitmap;//хэндл к спрайту шарика 
+    bool status;
+
+    bool isCollision(float x_, float y_)
+    {
+        return x_ > x && x_ < x + width && y_ > y && y_ < y + height;
+    }
+
+    void Draw()
+    {
+        if (status) {
+            ShowBitmap(window.context, x, y, width, height, hBitmap);
+        }
+    }
+
+
+};
+
+const int blockXcount = 25;
+const int blockYcount = 5;
+sprite racket;//ракетка игрока
+sprite enemy;//ракетка противника
+sprite ball;//шарик
+sprite block[blockXcount][blockYcount];
+
+struct {
+    int score, balls;//количество набранных очков и оставшихся "жизней"
+    bool action = false;//состояние - ожидание (игрок должен нажать пробел) или игра
+} game;
+
+
 HBITMAP hBack;// хэндл для фонового изображения
+
+
+HBITMAP loadBMP(const char* name)
+{
+    return (HBITMAP)LoadImageA(NULL, name, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+}
 
 //cекция кода
 
@@ -34,7 +62,7 @@ void InitGame()
     //в этой секции загружаем спрайты с помощью функций gdi
     //пути относительные - файлы должны лежать рядом с .exe 
     //результат работы LoadImageA сохраняет в хэндлах битмапов, рисование спрайтов будет произовдиться с помощью этих хэндлов
-    ball.hBitmap = (HBITMAP)LoadImageA(NULL, "ball.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    ball.hBitmap = loadBMP("ball.bmp");
     racket.hBitmap = (HBITMAP)LoadImageA(NULL, "racket.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     enemy.hBitmap = (HBITMAP)LoadImageA(NULL, "racket_enemy.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
     hBack = (HBITMAP)LoadImageA(NULL, "back.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
@@ -58,12 +86,29 @@ void InitGame()
     game.score = 0;
     game.balls = 9;
 
-   
+    for (int i = 0;i < blockXcount;i++) {
+        for (int j = 0;j < blockYcount;j++) {
+
+            sprite* sprite_ptr = &block[i][j];
+
+            sprite_ptr->width = window.width / blockXcount;
+            sprite_ptr->height = window.height / 3 / blockYcount;
+            sprite_ptr->x = block[i][j].width * i;
+            sprite_ptr->y = block[i][j].height * j + window.height / 3;
+            sprite_ptr->hBitmap = enemy.hBitmap;
+            sprite_ptr->status = true;
+
+
+
+        }
+    }
+
+
 }
 
 void ProcessSound(const char* name)//проигрывание аудиофайла в формате .wav, файл должен лежать в той же папке где и программа
 {
-    PlaySound(TEXT(name), NULL, SND_FILENAME | SND_ASYNC);//переменная name содежрит имя файла. флаг ASYNC позволяет проигрывать звук паралельно с исполнением программы
+    //PlaySound(TEXT(name), NULL, SND_FILENAME | SND_ASYNC);//переменная name содежрит имя файла. флаг ASYNC позволяет проигрывать звук паралельно с исполнением программы
 }
 
 void ShowScore()
@@ -97,7 +142,7 @@ void ProcessInput()
     }
 }
 
-void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool alpha = false)
+void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool alpha)
 {
     HBITMAP hbm, hOldbm;
     HDC hMemDC;
@@ -128,6 +173,17 @@ void ShowBitmap(HDC hDC, int x, int y, int x1, int y1, HBITMAP hBitmapBall, bool
 void ShowRacketAndBall()
 {
     ShowBitmap(window.context, 0, 0, window.width, window.height, hBack);//задний фон
+
+
+    for (int i = 0;i < blockXcount;i++) {
+        for (int j = 0;j < blockYcount;j++) {
+
+            block[i][j].Draw();
+
+        }
+    }
+
+
     ShowBitmap(window.context, racket.x - racket.width / 2., racket.y, racket.width, racket.height, racket.hBitmap);// ракетка игрока
 
     if (ball.dy < 0 && (enemy.x - racket.width / 4 > ball.x || ball.x > enemy.x + racket.width / 4))
@@ -215,6 +271,48 @@ void ProcessRoom()
     CheckWalls();
     CheckRoof();
     CheckFloor();
+
+    float dx = ball.dx * ball.speed;
+    float dy = ball.dy * ball.speed;
+    float v = sqrt(pow(dx, 2) + pow(dy, 2));
+    float a = atan2(dx, dy) * 180. / 3.1415;
+
+    for (float angle = a - 90;angle < a + 90; angle += 18) {
+        float bx = sin(angle * 3.1415 / 180.) * ball.rad;
+        float by = cos(angle * 3.1415 / 180.) * ball.rad;
+        for (int t = 0; t < v; t++) {
+            float scale = float(t) / v;
+            float x = scale * dx + ball.x + bx;
+            float y = scale * dy + ball.y + by;
+
+            SetPixel(window.context, x, y, RGB(255, 255, 255));
+
+            for (int i = 0;i < blockXcount;i++) {
+                for (int j = 0;j < blockYcount;j++) {
+                    if (block[i][j].status) {
+                        if (block[i][j].isCollision(x, y)) {
+
+                            int left = x - block[i][j].x;
+                            int right = block[i][j].x + block[i][j].width - x;
+                            int top = y - block[i][j].y;
+                            int bottom = block[i][j].y + block[i][j].height - y;
+
+                            if (min(left, right) > min(top, bottom)) {
+                                ball.dy *= -1;
+                            }
+                            else {
+                                ball.dx *= -1;
+                            }
+
+
+                            block[i][j].status = false;
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 void ProcessBall()
@@ -253,24 +351,27 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     _In_ LPWSTR    lpCmdLine,
     _In_ int       nCmdShow)
 {
-    
+
     InitWindow();//здесь инициализируем все что нужно для рисования в окне
     InitGame();//здесь инициализируем переменные игры
 
-    mciSendString(TEXT("play ..\\Debug\\music.mp3 repeat"), NULL, 0, NULL);
+    //mciSendString(TEXT("play ..\\Debug\\music.mp3 repeat"), NULL, 0, NULL);
     ShowCursor(NULL);
-    
+
     while (!GetAsyncKeyState(VK_ESCAPE))
     {
         ShowRacketAndBall();//рисуем фон, ракетку и шарик
         ShowScore();//рисуем очик и жизни
-        BitBlt(window.device_context, 0, 0, window.width, window.height, window.context, 0, 0, SRCCOPY);//копируем буфер в окно
-        Sleep(16);//ждем 16 милисекунд (1/количество кадров в секунду)
 
         ProcessInput();//опрос клавиатуры
         LimitRacket();//проверяем, чтобы ракетка не убежала за экран
-        ProcessBall();//перемещаем шарик
+
         ProcessRoom();//обрабатываем отскоки от стен и каретки, попадание шарика в картетку
+        ProcessBall();//перемещаем шарик
+
+        BitBlt(window.device_context, 0, 0, window.width, window.height, window.context, 0, 0, SRCCOPY);//копируем буфер в окно
+        Sleep(16);//ждем 16 милисекунд (1/количество кадров в секунду)
+
     }
 
 }
